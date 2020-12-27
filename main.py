@@ -2,15 +2,22 @@ import uvicorn
 import requests
 from fastapi import FastAPI
 from pydantic import BaseModel
+from tortoise import fields
+from tortoise.models import Model
+from tortoise.contrib.fastapi import register_tortoise
+from tortoise.contrib.pydantic import pydantic_model_creator
 
 app = FastAPI()
 
-db = []
+
+class City(Model):
+    id = fields.IntField(pk=True)
+    name = fields.CharField(50, unique=True)
+    timezone = fields.CharField(50)
 
 
-class City(BaseModel):
-    name: str
-    timezone: str
+City_Pydantic = pydantic_model_creator(City, name='City')
+CityIn_Pydantic = pydantic_model_creator(City, name='CityIn', exclude_readonly=True)
 
 
 @app.get('/')
@@ -37,9 +44,9 @@ def get_city(city_id: int):
 
 
 @app.post('/cities')
-def create_city(city: City):
-    db.append(city.dict())
-    return db[-1]
+async def create_city(city: CityIn_Pydantic):
+    city_obj = await City.create(**city.dict(exclude_unset=True))
+    return await City_Pydantic.from_tortoise_orm(city_obj)
 
 
 @app.delete('/cities/{city_id}')
@@ -47,6 +54,14 @@ def delete_city(city_id: int):
     db.pop(city_id - 1)
     return {}
 
+
+register_tortoise(
+    app,
+    db_url='sqlite://db.sqlite3',
+    modules={'models': ['main']},
+    generate_schemas=True,
+    add_exception_handlers=True
+)
 
 if __name__ == '__main__':
     uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True)
