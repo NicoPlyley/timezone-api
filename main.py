@@ -1,7 +1,6 @@
 import uvicorn
 import requests
 from fastapi import FastAPI
-from pydantic import BaseModel
 from tortoise import fields
 from tortoise.models import Model
 from tortoise.contrib.fastapi import register_tortoise
@@ -15,6 +14,14 @@ class City(Model):
     name = fields.CharField(50, unique=True)
     timezone = fields.CharField(50)
 
+    def current_time(self) -> str:
+        r = requests.get(f'http://worldclockapi.com/api/json/{self.timezone}/now')
+        current_time = r.json()['currentDateTime']
+        return current_time
+
+    class PydanticMeta:
+        computed = ('current_time',)
+
 
 City_Pydantic = pydantic_model_creator(City, name='City')
 CityIn_Pydantic = pydantic_model_creator(City, name='CityIn', exclude_readonly=True)
@@ -26,21 +33,13 @@ def index():
 
 
 @app.get('/cities')
-def get_cities():
-    results = []
-    for city in db:
-        r = requests.get(f'http://worldclockapi.com/api/json/{city["timezone"]}/now')
-        current_time = r.json()['currentDateTime']
-        results.append({'name': city['name'], 'timezone': city['timezone'], 'current_time': current_time})
-    return results
+async def get_cities():
+    return await City_Pydantic.from_queryset(City.all())
 
 
 @app.get('/cities/{city_id')
-def get_city(city_id: int):
-    city = db[city_id - 1]
-    r = requests.get(f'http://worldclockapi.com/api/json/{city["timezone"]}/now')
-    current_time = r.json()['currentDateTime']
-    return {'name': city['name'], 'timezone': city['timezone'], 'current_time': current_time}
+async def get_city(city_id: int):
+    return await City_Pydantic.from_queryset_single(City.get(id=city_id))
 
 
 @app.post('/cities')
@@ -50,9 +49,9 @@ async def create_city(city: CityIn_Pydantic):
 
 
 @app.delete('/cities/{city_id}')
-def delete_city(city_id: int):
-    db.pop(city_id - 1)
-    return {}
+async def delete_city(city_id: int):
+    await City.filter(id=city_id).delete()
+    return {'msg': 'Success'}
 
 
 register_tortoise(
