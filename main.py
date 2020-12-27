@@ -1,5 +1,8 @@
 import uvicorn
 import requests
+import aiohttp
+import asyncio
+
 from fastapi import FastAPI
 from tortoise import fields
 from tortoise.models import Model
@@ -8,6 +11,19 @@ from tortoise.contrib.pydantic import pydantic_model_creator
 
 app = FastAPI()
 
+session = None
+
+
+@app.on_event('startup')
+async def startup_event():
+    global session
+    session = aiohttp.ClientSession()
+
+
+@app.on_event('shutdown')
+async def shutdown_event():
+    await session.close()
+
 
 class City(Model):
     id = fields.IntField(pk=True)
@@ -15,9 +31,14 @@ class City(Model):
     timezone = fields.CharField(50)
 
     def current_time(self) -> str:
-        r = requests.get(f'http://worldclockapi.com/api/json/{self.timezone}/now')
-        current_time = r.json()['currentDateTime']
-        return current_time
+        return ''
+
+    @classmethod
+    async def get_current_time(cls, obj, session):
+        async with session.get(f'http://worldclockapi.com/api/json/{obj.timezone}/now') as response:
+            result = await response.json()
+            current_time = result['datetime']
+            obj.current_time = current_time
 
     class PydanticMeta:
         computed = ('current_time',)
