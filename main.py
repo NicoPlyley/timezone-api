@@ -1,4 +1,5 @@
 import uvicorn
+import requests
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -19,12 +20,20 @@ def index():
 
 @app.get('/cities')
 def get_cities():
-    return db
+    results = []
+    for city in db:
+        r = requests.get(f'http://worldclockapi.com/api/json/{city["timezone"]}/now')
+        current_time = r.json()['currentDateTime']
+        results.append({'name': city['name'], 'timezone': city['timezone'], 'current_time': current_time})
+    return results
 
 
 @app.get('/cities/{city_id')
 def get_city(city_id: int):
-    return db[city_id - 1]
+    city = db[city_id - 1]
+    r = requests.get(f'http://worldclockapi.com/api/json/{city["timezone"]}/now')
+    current_time = r.json()['currentDateTime']
+    return {'name': city['name'], 'timezone': city['timezone'], 'current_time': current_time}
 
 
 @app.post('/cities')
