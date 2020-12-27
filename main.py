@@ -1,5 +1,4 @@
 import uvicorn
-import requests
 import aiohttp
 import asyncio
 
@@ -34,10 +33,10 @@ class City(Model):
         return ''
 
     @classmethod
-    async def get_current_time(cls, obj, session):
-        async with session.get(f'http://worldclockapi.com/api/json/{obj.timezone}/now') as response:
+    async def get_current_time(cls, obj, current_session):
+        async with current_session.get(f'http://worldclockapi.com/api/json/{obj.timezone}/now') as response:
             result = await response.json()
-            current_time = result['datetime']
+            current_time = result['currentDateTime']
             obj.current_time = current_time
 
     class PydanticMeta:
@@ -55,7 +54,18 @@ def index():
 
 @app.get('/cities')
 async def get_cities():
-    return await City_Pydantic.from_queryset(City.all())
+    cities = await City_Pydantic.from_queryset(City.all())
+
+    global session
+
+    tasks = []
+    for city in cities:
+        task = asyncio.create_task(City.get_current_time(city, session))
+        tasks.append(task)
+
+    await asyncio.gather(*tasks)
+
+    return cities
 
 
 @app.get('/cities/{city_id')
